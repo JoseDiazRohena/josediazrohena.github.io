@@ -1,4 +1,4 @@
-And so continues our crusade against warnings.
+And so continues our [crusade against warnings](https://github.com/tote-bag-labs/valentine/pull/47).
 
 In this case, most of our warnings were implicit `float` to `double`
 conversion. These were mainly resolved by amending our function interfaces to accept `float`. 
