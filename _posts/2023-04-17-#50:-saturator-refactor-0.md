@@ -39,7 +39,12 @@ Implementation Details
 ======================
 
 This post isn't named "Getting Gain Normalization Right" or something like that because,
-as pointed out above, the solution wasn't 
+as pointed out above, the solution wasn't terribly interesting. Implementing it raised some interesting questions about
+how to correctly implement the fix.
+
+So, correctly finding the compensation gain requires calculating the 
+In our case, this has to be done on a per sample basis because the gain actually passed into whatever
+saturation function being used depends on the given input.
 
 
 
