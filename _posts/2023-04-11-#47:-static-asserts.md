@@ -28,7 +28,7 @@ branching works for `if constexpr` expression.
 Here's what I wanted to do: create a function that returned a pair of 
 float types, depending on the function's type:
 
-```
+```cpp
 template <typename T>
 constexpr std::pair<T, T> coshRange()
 {
@@ -56,7 +56,7 @@ writing something like `static_assert(false,"message")` will always fail.
 
 The solution is to, with the help of `type_traits`, create a helper type that always evaluates to false and, most importantly, only is compiled when instantiated:
 
-```
+```cpp
 template <typename T>
 struct dependent_false : std::false_type
 {
@@ -65,7 +65,7 @@ struct dependent_false : std::false_type
 
 Now we can write that else branch as:
 
-```
+```cpp
 static_assert (dependent_false<T>, "ClampedCosh only supports float types");
 ```
 
