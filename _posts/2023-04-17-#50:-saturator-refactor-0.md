@@ -23,7 +23,7 @@ This post isn't named "Getting Gain Normalization Right" or something like that 
 
 As shown above, we find the correct compensation by running the saturation function for the gain we are applying to the signal. In our case, this has to be done on a per sample basis because the gain actually passed into whatever saturator being used depends on the given input. We may want asymmetry. And so we run into a problem already present in this implementation:
 
-```
+```cpp
 switch (saturationType)
     {
         case Type::inverseHyperbolicSine:
@@ -36,7 +36,7 @@ switch (saturationType)
 
 When I first implemented this saturation class, I did so naively. This switch executes in the saturation class's `processSample` function. This can be bad for [cache performance](https://blog.cloudflare.com/branch-predictor/). I think I'm going to resolve this by refactoring `Saturation` into a templated class. But that's a big project for now. So let's at least not add even more branches (at runtime) for figuring out which gain compensation function to call.
 
-```
+```cpp
   struct inverseHyperbolicSineTag {};
   struct hyperbolicTangentTag {};
 
