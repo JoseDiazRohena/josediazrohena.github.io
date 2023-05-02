@@ -33,7 +33,7 @@ Maybe using the STL version would work better. But how would I know? The issue w
 
 
 <p align="center">
-  <img src="assets/57_asinh_test_matrix.png" alt="A screenshot of Ableton Live's session view. A matrix of audio clips is displayed, showing, in one group, audio clips for Valentine when the Saturator is processed with a tolerance of 1e-4 while varying the asinh implementation and saturation level. In another group, audio clips for valentine are shown when the Saturator is processed using the STL asinh implementation for tolerances of 1e-4 and 1e-10 for different satuation levels." />
+  <img src="_posts/assets/57_asinh_test_matrix.png" alt="A screenshot of Ableton Live's session view. A matrix of audio clips is displayed, showing, in one group, audio clips for Valentine when the Saturator is processed with a tolerance of 1e-4 while varying the asinh implementation and saturation level. In another group, audio clips for valentine are shown when the Saturator is processed using the STL asinh implementation for tolerances of 1e-4 and 1e-10 for different satuation levels." />
 </p>
 
 Arranging the clips this way was especially helpful in this case as it helped me evaluate the results of different kinds of changes to the algorithm in different conditions. In this case I wanted to see how different tolerance settings and choice of `asinh` implementation sounded for loud and quiet signals.
