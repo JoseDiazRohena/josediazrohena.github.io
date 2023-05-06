@@ -1,0 +1,97 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>#47: Static Asserts</title>
+    <link rel="stylesheet" href="/assets/css/styles.css">
+  </head>
+  <body>
+    <nav>
+  
+    <a href="/" >Home</a>
+  
+    <a href="/about.html" >About</a>
+  
+    <a href="/blog.html" >Blog</a>
+  
+</nav>
+    <h1>#47: Static Asserts</h1>
+<p>11 Apr 2023 - jill</p>
+
+<p>And so continues our <a href="https://github.com/tote-bag-labs/valentine/pull/47">crusade against warnings</a>.</p>
+
+<p>In this case, most of our warnings were implicit <code class="language-plaintext highlighter-rouge">float</code> to <code class="language-plaintext highlighter-rouge">double</code>
+conversion. These were mainly resolved by amending our function interfaces to accept <code class="language-plaintext highlighter-rouge">float</code>.</p>
+
+<p>One exception is the <code class="language-plaintext highlighter-rouge">hyperTanFirstAntiDeriv</code>. This function has been
+the source of overflows for a while now. Earlier I figured that the <code class="language-plaintext highlighter-rouge">cosh</code>
+call was the culprit, as that function blows up for silly large numbers.
+Because of this, I implemented a wrapper function that first clips input
+that would cause an overflow.</p>
+
+<p>One thing I neglected to consider is that the range to which input is clipped
+is determined by the type in use. Originally, this was all implemented using
+<code class="language-plaintext highlighter-rouge">double</code>. These changes, however, changed everything to <code class="language-plaintext highlighter-rouge">float</code>, as that is
+the type we expect from calling code (maybe we can template that some time).
+Doing this brought the overflows, NaN, and denormals back.</p>
+
+<p>So, I figured I could use different ranges for <code class="language-plaintext highlighter-rouge">float</code> and <code class="language-plaintext highlighter-rouge">double</code>. More about that
+below. This work ended up solving the issue. <code class="language-plaintext highlighter-rouge">float</code> was now working without 
+overflow…most of the time. I got another  CI failure in Windows, and figured that it 
+would be best to err on the side of caution and just cast  to <code class="language-plaintext highlighter-rouge">double</code> when doing 
+the antiderivative and casting back to <code class="language-plaintext highlighter-rouge">float</code> on the way out.</p>
+
+<p>Nevermind the fancy <code class="language-plaintext highlighter-rouge">constexpr</code> magic  I worked to “cleanly” set those 
+<code class="language-plaintext highlighter-rouge">clampedCosine</code> bounds. I learned a lot about templates, specifically how
+branching works for <code class="language-plaintext highlighter-rouge">if constexpr</code> expression.</p>
+
+<p>Here’s what I wanted to do: create a function that returned a pair of 
+float types, depending on the function’s type:</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="nc">T</span><span class="p">&gt;</span>
+<span class="k">constexpr</span> <span class="n">std</span><span class="o">::</span><span class="n">pair</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span> <span class="n">T</span><span class="o">&gt;</span> <span class="n">coshRange</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="k">if</span> <span class="k">constexpr</span> <span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">is_same</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span> <span class="kt">double</span><span class="o">&gt;::</span><span class="n">value</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="p">{</span> <span class="n">range</span> <span class="p">};</span>
+    <span class="p">}</span>
+    <span class="k">else</span> <span class="k">if</span> <span class="k">constexpr</span> <span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">is_same</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span> <span class="kt">float</span><span class="o">&gt;::</span><span class="n">value</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="p">{</span> <span class="n">a</span> <span class="n">different</span> <span class="n">range</span> <span class="p">};</span>
+    <span class="p">}</span>
+    <span class="k">else</span>
+    <span class="p">{</span>
+        <span class="k">static_assert</span> <span class="p">(</span><span class="nb">false</span><span class="p">,</span> <span class="s">"ClampedCosh only supports float types"</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+</code></pre></div></div>
+
+<p>I was extremely confused when I saw the <code class="language-plaintext highlighter-rouge">static_assert</code> failing, even when instantiating a 
+function with an accepted type.</p>
+
+<p>Some searching lead me to this answer on <a href="https://stackoverflow.com/questions/68526152/c-static-assert-fails-on-both-branches-of-an-if-constexpr-statement">Stack Overflow</a>, which I understand as meaning: a <code class="language-plaintext highlighter-rouge">static_assert</code> is always compiled. Therefore,
+writing something like <code class="language-plaintext highlighter-rouge">static_assert(false,"message")</code> will always fail.</p>
+
+<p>The solution is to, with the help of <code class="language-plaintext highlighter-rouge">type_traits</code>, create a helper type that always evaluates to false and, most importantly, only is compiled when instantiated:</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="nc">T</span><span class="p">&gt;</span>
+<span class="k">struct</span> <span class="nc">dependent_false</span> <span class="o">:</span> <span class="n">std</span><span class="o">::</span><span class="n">false_type</span>
+<span class="p">{</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<p>Now we can write that else branch as:</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">static_assert</span> <span class="p">(</span><span class="n">dependent_false</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">,</span> <span class="s">"ClampedCosh only supports float types"</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>And the static_assert will correctly (successfully?) fail if the function was instantiated with an 
+incompatible type.</p>
+
+<p>After all of this, I ended up not using the specialization that all this fuss was for—as I mentioned above,
+I still got some overflows and ended up doing that part of the calculation with <code class="language-plaintext highlighter-rouge">double</code>. But 
+it was a fun bit of learning that I’ve chosen to keep in.</p>
+
+  </body>
+</html>

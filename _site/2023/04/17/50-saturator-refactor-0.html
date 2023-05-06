@@ -1,0 +1,61 @@
+<p>Saturation gain normalization <a href="https://github.com/tote-bag-labs/valentine/pull/50">is a lot better now</a></p>
+
+<p>As described in the attached issue, turning the saturation parameter up worked as intended, but also made the output quieter. This is because of the way the saturation output was being adjusted to account for input gain. This is because of the overly simplistic normalization used in saturation processing.</p>
+
+<p>Here’s how we were doing it:</p>
+
+<p><code class="language-plaintext highlighter-rouge">y = f(x * gain) / gain</code></p>
+
+<p>This works in that it keeps the signal from getting too loud without manual gain adjustment. This doesn’t actually work because the function we are doing gain compensation for is, of course, nonlinear. The function’s output won’t increase as much as the input gain does. Dividing the output of this function by gain, then, will make the output quieter for large gain inputs. Not good for encouraging the user to turn up the gain!</p>
+
+<p>What we need is for our gain compensation to ease up for larger gain inputs.</p>
+
+<p>The following works a lot better, resulting in a small amount of output gain
+increase:</p>
+
+<p><code class="language-plaintext highlighter-rouge">y = f(x * gain) / f(gain)</code></p>
+
+<p>I probably saw this in a paper or book before and forgot to apply it. And then, when I was pondering this issue, I asked copilot to write me a function that would find the correct compensation gain for an inverse hyperbolic sine. The answer was basically what’s shown above.</p>
+
+<h1 id="implementation-details">Implementation Details</h1>
+<p>This post isn’t named “Getting Gain Normalization Right” or something like that because, as pointed out above, the solution wasn’t terribly interesting. Implementing it raised some interesting questions about how to correctly implement the fix.</p>
+
+<p>As shown above, we find the correct compensation by running the saturation function for the gain we are applying to the signal. In our case, this has to be done on a per sample basis because the gain actually passed into whatever saturator being used depends on the given input. We may want asymmetry. And so we run into a problem already present in this implementation:</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">switch</span> <span class="p">(</span><span class="n">saturationType</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">case</span> <span class="n">Type</span><span class="o">::</span><span class="n">inverseHyperbolicSine</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">inverseHyperbolicSine</span> <span class="p">(</span><span class="n">inputSample</span> <span class="o">*</span> <span class="n">gain</span><span class="p">)</span> <span class="o">*</span> <span class="n">compensationGain</span><span class="o">&lt;</span><span class="n">inverseHyperbolicSineTag</span><span class="o">&gt;</span> <span class="p">(</span><span class="n">gain</span><span class="p">);</span>
+
+        <span class="k">case</span> <span class="n">Type</span><span class="o">::</span><span class="n">sineArcTangent</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">sineArcTangent</span> <span class="p">(</span><span class="n">inputSample</span><span class="p">,</span> <span class="n">gain</span><span class="p">);</span>
+<span class="o">/</span><span class="p">..</span><span class="o">/</span>
+</code></pre></div></div>
+
+<p>When I first implemented this saturation class, I did so naively. This switch executes in the saturation class’s <code class="language-plaintext highlighter-rouge">processSample</code> function. This can be bad for <a href="https://blog.cloudflare.com/branch-predictor/">cache performance</a>. I think I’m going to resolve this by refactoring <code class="language-plaintext highlighter-rouge">Saturation</code> into a templated class. But that’s a big project for now. So let’s at least not add even more branches (at runtime) for figuring out which gain compensation function to call.</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code>  <span class="k">struct</span> <span class="nc">inverseHyperbolicSineTag</span> <span class="p">{};</span>
+  <span class="k">struct</span> <span class="nc">hyperbolicTangentTag</span> <span class="p">{};</span>
+
+  <span class="k">template</span> <span class="o">&lt;</span><span class="k">typename</span> <span class="nc">SaturationType</span><span class="p">,</span> <span class="k">typename</span> <span class="nc">FloatType</span><span class="p">&gt;</span>
+  <span class="k">auto</span> <span class="nf">compensationGain</span><span class="p">(</span><span class="n">FloatType</span> <span class="n">inputGain</span><span class="p">)</span>
+  <span class="p">{</span>
+    <span class="k">if</span> <span class="k">constexpr</span> <span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">is_same</span><span class="o">&lt;</span><span class="n">SaturationType</span><span class="p">,</span> <span class="n">inverseHyperbolicSineTag</span><span class="o">&gt;::</span><span class="n">value</span><span class="p">)</span>
+    <span class="p">{</span>
+      <span class="k">return</span> <span class="k">static_cast</span><span class="o">&lt;</span><span class="n">FloatType</span><span class="o">&gt;</span><span class="p">(</span><span class="mf">1.0</span><span class="p">)</span> <span class="o">/</span> <span class="n">inverseHyperbolicSine</span><span class="p">(</span><span class="n">inputGain</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="k">else</span> <span class="k">if</span> <span class="k">constexpr</span> <span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">is_same</span><span class="o">&lt;</span><span class="n">SaturationType</span><span class="p">,</span> <span class="n">hyperbolicTangentTag</span><span class="o">&gt;::</span><span class="n">value</span><span class="p">)</span>
+    <span class="p">{</span>
+      <span class="k">return</span> <span class="k">static_cast</span><span class="o">&lt;</span><span class="n">FloatType</span><span class="o">&gt;</span><span class="p">(</span><span class="mf">1.0</span><span class="p">)</span> <span class="o">/</span> <span class="n">hyperbolicTangent</span><span class="p">(</span><span class="n">inputGain</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="k">else</span>
+    <span class="p">{</span>
+      <span class="k">static_assert</span><span class="p">(</span><span class="n">tote_bag</span><span class="o">::</span><span class="n">type_helpers</span><span class="o">::</span><span class="n">dependent_false</span><span class="o">&lt;</span><span class="n">SaturationType</span><span class="o">&gt;::</span><span class="n">value</span><span class="p">,</span> <span class="s">"Unsupported saturation type."</span><span class="p">);</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+</code></pre></div></div>
+
+<p>This might not be the best approach for a full refactor: maybe some kind of templated saturation base class (inheriting from a processing class as part of a big <a href="https://en.cppreference.com/w/cpp/language/crtp">CRTP refactor?</a>) would be easier to read and faster to compile. But for now, I think this is Good Enough.</p>
+
+<h1 id="benchmarking">Benchmarking</h1>
+<p>This is all driven by performance concerns. But they are entirely hypothetical. One thing I’m interested in doing is benchmarking this code before the refactor.</p>

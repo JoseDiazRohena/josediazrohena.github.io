@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.9.3">Jekyll</generator><link href="http://localhost:4000/feed.xml" rel="self" type="application/atom+xml" /><link href="http://localhost:4000/" rel="alternate" type="text/html" /><updated>2023-05-06T19:15:51+02:00</updated><id>http://localhost:4000/feed.xml</id><entry><title type="html">#57 Improving Saturators</title><link href="http://localhost:4000/2023/05/01/57-improving-saturators.html" rel="alternate" type="text/html" title="#57 Improving Saturators" /><published>2023-05-01T00:00:00+02:00</published><updated>2023-05-01T00:00:00+02:00</updated><id>http://localhost:4000/2023/05/01/#57-improving-saturators</id><content type="html" xml:base="http://localhost:4000/2023/05/01/57-improving-saturators.html">&lt;p&gt;I recently spent time fixing the gain normalization in Valentine’s waveshapers. After a brief detour to a &lt;a href=&quot;https://github.com/tote-bag-labs/valentine/pull/53&quot;&gt;UI topic&lt;/a&gt; (more on this later), I decided to take a look at how the waveshapers use &lt;a href=&quot;https://github.com/tote-bag-labs/valentine/pull/57&quot;&gt;Antiderivative Anti Aliasing&lt;/a&gt;. I won’t go deep into the theory here, as it has been covered more comprehensively and clearly by &lt;a href=&quot;https://jatinchowdhury18.medium.com/practical-considerations-for-antiderivative-anti-aliasing-d5847167f510&quot;&gt;people smarter than me&lt;/a&gt;. Comparing the examples linked here to what I had implemented, I noticed something odd.&lt;/p&gt;
+
+&lt;p&gt;Generally, first order ADAA is calculated as follows: &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;y = (F(x) - F(x1)) / (x - x1)&lt;/code&gt;, where &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;F(x)&lt;/code&gt; is the antiderivative of the function to which antialiasing is being applied (&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;f(x)&lt;/code&gt;). This calculation can cause a divide by zero when the difference between the current and previous sample is small enough. In this case we use function’s standard version: &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;y = f(x)&lt;/code&gt;.&lt;/p&gt;
+
+&lt;div class=&quot;language-cpp highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;
+&lt;span class=&quot;k&quot;&gt;if&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;x1&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;tolerance&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;y&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;f&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;else&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;y&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;F&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;F&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;/&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;x1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;What is “small enough”? For &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;float&lt;/code&gt;, that’s around 1e-7 (estimating based on &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;std::numeric_limits&amp;lt;float&amp;gt;::epsilon()&lt;/code&gt;). I noticed that my implementation was using a higher tolerance: &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;1e-3&lt;/code&gt;. This was, if I recall correctly, a value suggested by a mentor. Looking at it again, and seeing an example that used a much lower tolerance, I thought &lt;strong&gt;(see note below about this)&lt;/strong&gt; “surely it should be lower—after all, we want to use the interpolated calculation as much as possible”. Lowering the tolerance, however, degraded the sound of my inverse hyperbolic sine waveshaper: small signals now had a halo of what sounded like quantization noise, and large signals had extra high end hash. Kind of the opposite of what I wanted.&lt;/p&gt;
+
+&lt;p&gt;Did I get something wrong? I verified that I was correctly calculating the &lt;a href=&quot;https://www.wolframalpha.com/input?i=asinh+antiderivative&quot;&gt;antiderivative&lt;/a&gt;. The only thing I could think of us how I was calculating the inverse hyperbolic sine. When I first implemented this function, I didn’t know that the C++ standard library had one of its own. So I looked up the calculation and used that:&lt;/p&gt;
+
+&lt;div class=&quot;language-cpp highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;
+&lt;span class=&quot;kr&quot;&gt;inline&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;float&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Saturation&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;inverseHyperbolicSine&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;kt&quot;&gt;float&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;x&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;log&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sqrt&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;x&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;x&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;mf&quot;&gt;1.0&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;f&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;));&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Maybe using the STL version would work better. But how would I know? The issue was easy to hear—so I quickly put together a a Live session that would allow me to evaluate my changes.&lt;/p&gt;
+
+&lt;p&gt;Generally, I found that &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;std::asinh&lt;/code&gt; sounded better than what I had implemented. This was evident in both small and large signals. Using the STL implementation allowed me to use a slightly lower tolerance than I was using before (1e-4). Lower tolerances caused noisy output, especially noticeable for small signals.&lt;/p&gt;
+
+&lt;p&gt;I also found that a smaller tolerance could be used for &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;tanh&lt;/code&gt; without the noise I was getting for &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;asinh&lt;/code&gt;.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;A note about reasonable but wrong assumptions:&lt;/strong&gt; I messaged Jatin Chowdhury, who I linked above, regarding my assumption that we want to use the interpolated calculation as much as possible. It turns out that my thinking was turned around. The fact that we use the conventional calculation when we would otherwise have a divide by zero doesn’t mean that we have an edge case. We can’t reason, then, that we want to use the interpolated calculation as much as possible.&lt;/p&gt;
+
+&lt;p&gt;This makes sense if we consider what the difference between two sequential samples approacing 0 really means. The amount of change between samples is directly related to frequency. So, to grossly generalize, lower frequencies will trigger the conventional branch and high frequencies will trigger the interpolated branch. We’re ok with this because we’re not worried about low frequencies causing aliasing.&lt;/p&gt;</content><author><name></name></author><summary type="html">I recently spent time fixing the gain normalization in Valentine’s waveshapers. After a brief detour to a UI topic (more on this later), I decided to take a look at how the waveshapers use Antiderivative Anti Aliasing. I won’t go deep into the theory here, as it has been covered more comprehensively and clearly by people smarter than me. Comparing the examples linked here to what I had implemented, I noticed something odd.</summary></entry><entry><title type="html">#50: Saturator Refactor 0</title><link href="http://localhost:4000/2023/04/17/50-saturator-refactor-0.html" rel="alternate" type="text/html" title="#50: Saturator Refactor 0" /><published>2023-04-17T00:00:00+02:00</published><updated>2023-04-17T00:00:00+02:00</updated><id>http://localhost:4000/2023/04/17/#50:-saturator-refactor-0</id><content type="html" xml:base="http://localhost:4000/2023/04/17/50-saturator-refactor-0.html">&lt;p&gt;Saturation gain normalization &lt;a href=&quot;https://github.com/tote-bag-labs/valentine/pull/50&quot;&gt;is a lot better now&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;As described in the attached issue, turning the saturation parameter up worked as intended, but also made the output quieter. This is because of the way the saturation output was being adjusted to account for input gain. This is because of the overly simplistic normalization used in saturation processing.&lt;/p&gt;
+
+&lt;p&gt;Here’s how we were doing it:&lt;/p&gt;
+
+&lt;p&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;y = f(x * gain) / gain&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;This works in that it keeps the signal from getting too loud without manual gain adjustment. This doesn’t actually work because the function we are doing gain compensation for is, of course, nonlinear. The function’s output won’t increase as much as the input gain does. Dividing the output of this function by gain, then, will make the output quieter for large gain inputs. Not good for encouraging the user to turn up the gain!&lt;/p&gt;
+
+&lt;p&gt;What we need is for our gain compensation to ease up for larger gain inputs.&lt;/p&gt;
+
+&lt;p&gt;The following works a lot better, resulting in a small amount of output gain
+increase:&lt;/p&gt;
+
+&lt;p&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;y = f(x * gain) / f(gain)&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;I probably saw this in a paper or book before and forgot to apply it. And then, when I was pondering this issue, I asked copilot to write me a function that would find the correct compensation gain for an inverse hyperbolic sine. The answer was basically what’s shown above.&lt;/p&gt;
+
+&lt;h1 id=&quot;implementation-details&quot;&gt;Implementation Details&lt;/h1&gt;
+&lt;p&gt;This post isn’t named “Getting Gain Normalization Right” or something like that because, as pointed out above, the solution wasn’t terribly interesting. Implementing it raised some interesting questions about how to correctly implement the fix.&lt;/p&gt;
+
+&lt;p&gt;As shown above, we find the correct compensation by running the saturation function for the gain we are applying to the signal. In our case, this has to be done on a per sample basis because the gain actually passed into whatever saturator being used depends on the given input. We may want asymmetry. And so we run into a problem already present in this implementation:&lt;/p&gt;
+
+&lt;div class=&quot;language-cpp highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;switch&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;saturationType&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;case&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Type&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;inverseHyperbolicSine&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+            &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;inverseHyperbolicSine&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;inputSample&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;gain&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;compensationGain&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;inverseHyperbolicSineTag&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;gain&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+
+        &lt;span class=&quot;k&quot;&gt;case&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Type&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sineArcTangent&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+            &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sineArcTangent&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;inputSample&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;gain&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;/&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;..&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;/&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;When I first implemented this saturation class, I did so naively. This switch executes in the saturation class’s &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;processSample&lt;/code&gt; function. This can be bad for &lt;a href=&quot;https://blog.cloudflare.com/branch-predictor/&quot;&gt;cache performance&lt;/a&gt;. I think I’m going to resolve this by refactoring &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;Saturation&lt;/code&gt; into a templated class. But that’s a big project for now. So let’s at least not add even more branches (at runtime) for figuring out which gain compensation function to call.&lt;/p&gt;
+
+&lt;div class=&quot;language-cpp highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  &lt;span class=&quot;k&quot;&gt;struct&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;inverseHyperbolicSineTag&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{};&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;struct&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;hyperbolicTangentTag&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{};&lt;/span&gt;
+
+  &lt;span class=&quot;k&quot;&gt;template&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;typename&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;SaturationType&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;typename&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;FloatType&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;&amp;gt;&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;auto&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;compensationGain&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;FloatType&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;inputGain&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+  &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;constexpr&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;std&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;is_same&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;SaturationType&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;inverseHyperbolicSineTag&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;value&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+      &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;static_cast&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;FloatType&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mf&quot;&gt;1.0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;/&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;inverseHyperbolicSine&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;inputGain&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;constexpr&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;std&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;is_same&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;SaturationType&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;hyperbolicTangentTag&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;value&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+      &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;static_cast&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;FloatType&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mf&quot;&gt;1.0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;/&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;hyperbolicTangent&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;inputGain&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+      &lt;span class=&quot;k&quot;&gt;static_assert&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;tote_bag&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;type_helpers&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;dependent_false&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;SaturationType&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;value&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;Unsupported saturation type.&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+  &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;This might not be the best approach for a full refactor: maybe some kind of templated saturation base class (inheriting from a processing class as part of a big &lt;a href=&quot;https://en.cppreference.com/w/cpp/language/crtp&quot;&gt;CRTP refactor?&lt;/a&gt;) would be easier to read and faster to compile. But for now, I think this is Good Enough.&lt;/p&gt;
+
+&lt;h1 id=&quot;benchmarking&quot;&gt;Benchmarking&lt;/h1&gt;
+&lt;p&gt;This is all driven by performance concerns. But they are entirely hypothetical. One thing I’m interested in doing is benchmarking this code before the refactor.&lt;/p&gt;</content><author><name></name></author><summary type="html">Saturation gain normalization is a lot better now</summary></entry><entry><title type="html">#47: Static Asserts</title><link href="http://localhost:4000/2023/04/11/47-static-asserts.html" rel="alternate" type="text/html" title="#47: Static Asserts" /><published>2023-04-11T00:00:00+02:00</published><updated>2023-04-11T00:00:00+02:00</updated><id>http://localhost:4000/2023/04/11/#47:-static-asserts</id><content type="html" xml:base="http://localhost:4000/2023/04/11/47-static-asserts.html">&lt;p&gt;And so continues our &lt;a href=&quot;https://github.com/tote-bag-labs/valentine/pull/47&quot;&gt;crusade against warnings&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;In this case, most of our warnings were implicit &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;float&lt;/code&gt; to &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;double&lt;/code&gt;
+conversion. These were mainly resolved by amending our function interfaces to accept &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;float&lt;/code&gt;.&lt;/p&gt;
+
+&lt;p&gt;One exception is the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;hyperTanFirstAntiDeriv&lt;/code&gt;. This function has been
+the source of overflows for a while now. Earlier I figured that the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;cosh&lt;/code&gt;
+call was the culprit, as that function blows up for silly large numbers.
+Because of this, I implemented a wrapper function that first clips input
+that would cause an overflow.&lt;/p&gt;
+
+&lt;p&gt;One thing I neglected to consider is that the range to which input is clipped
+is determined by the type in use. Originally, this was all implemented using
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;double&lt;/code&gt;. These changes, however, changed everything to &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;float&lt;/code&gt;, as that is
+the type we expect from calling code (maybe we can template that some time).
+Doing this brought the overflows, NaN, and denormals back.&lt;/p&gt;
+
+&lt;p&gt;So, I figured I could use different ranges for &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;float&lt;/code&gt; and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;double&lt;/code&gt;. More about that
+below. This work ended up solving the issue. &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;float&lt;/code&gt; was now working without 
+overflow…most of the time. I got another  CI failure in Windows, and figured that it 
+would be best to err on the side of caution and just cast  to &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;double&lt;/code&gt; when doing 
+the antiderivative and casting back to &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;float&lt;/code&gt; on the way out.&lt;/p&gt;
+
+&lt;p&gt;Nevermind the fancy &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;constexpr&lt;/code&gt; magic  I worked to “cleanly” set those 
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;clampedCosine&lt;/code&gt; bounds. I learned a lot about templates, specifically how
+branching works for &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;if constexpr&lt;/code&gt; expression.&lt;/p&gt;
+
+&lt;p&gt;Here’s what I wanted to do: create a function that returned a pair of 
+float types, depending on the function’s type:&lt;/p&gt;
+
+&lt;div class=&quot;language-cpp highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;template&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;typename&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;T&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;&amp;gt;&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;constexpr&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;std&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;pair&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;T&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;T&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;coshRange&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;constexpr&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;std&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;is_same&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;T&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;double&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;value&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;range&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;constexpr&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;std&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;is_same&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;T&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;float&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;value&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;a&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;different&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;range&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;static_assert&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;false&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;ClampedCosh only supports float types&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;I was extremely confused when I saw the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;static_assert&lt;/code&gt; failing, even when instantiating a 
+function with an accepted type.&lt;/p&gt;
+
+&lt;p&gt;Some searching lead me to this answer on &lt;a href=&quot;https://stackoverflow.com/questions/68526152/c-static-assert-fails-on-both-branches-of-an-if-constexpr-statement&quot;&gt;Stack Overflow&lt;/a&gt;, which I understand as meaning: a &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;static_assert&lt;/code&gt; is always compiled. Therefore,
+writing something like &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;static_assert(false,&quot;message&quot;)&lt;/code&gt; will always fail.&lt;/p&gt;
+
+&lt;p&gt;The solution is to, with the help of &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;type_traits&lt;/code&gt;, create a helper type that always evaluates to false and, most importantly, only is compiled when instantiated:&lt;/p&gt;
+
+&lt;div class=&quot;language-cpp highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;template&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;typename&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;T&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;&amp;gt;&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;struct&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;dependent_false&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;std&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;false_type&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Now we can write that else branch as:&lt;/p&gt;
+
+&lt;div class=&quot;language-cpp highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;static_assert&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;dependent_false&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;T&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;ClampedCosh only supports float types&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;And the static_assert will correctly (successfully?) fail if the function was instantiated with an 
+incompatible type.&lt;/p&gt;
+
+&lt;p&gt;After all of this, I ended up not using the specialization that all this fuss was for—as I mentioned above,
+I still got some overflows and ended up doing that part of the calculation with &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;double&lt;/code&gt;. But 
+it was a fun bit of learning that I’ve chosen to keep in.&lt;/p&gt;</content><author><name>jill</name></author><summary type="html">And so continues our crusade against warnings.</summary></entry></feed>

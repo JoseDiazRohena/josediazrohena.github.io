@@ -1,0 +1,38 @@
+
+<p>I recently spent time fixing the gain normalization in Valentine’s waveshapers. After a brief detour to a <a href="https://github.com/tote-bag-labs/valentine/pull/53">UI topic</a> (more on this later), I decided to take a look at how the waveshapers use <a href="https://github.com/tote-bag-labs/valentine/pull/57">Antiderivative Anti Aliasing</a>. I won’t go deep into the theory here, as it has been covered more comprehensively and clearly by <a href="https://jatinchowdhury18.medium.com/practical-considerations-for-antiderivative-anti-aliasing-d5847167f510">people smarter than me</a>. Comparing the examples linked here to what I had implemented, I noticed something odd.</p>
+
+<p>Generally, first order ADAA is calculated as follows: <code class="language-plaintext highlighter-rouge">y = (F(x) - F(x1)) / (x - x1)</code>, where <code class="language-plaintext highlighter-rouge">F(x)</code> is the antiderivative of the function to which antialiasing is being applied (<code class="language-plaintext highlighter-rouge">f(x)</code>). This calculation can cause a divide by zero when the difference between the current and previous sample is small enough. In this case we use function’s standard version: <code class="language-plaintext highlighter-rouge">y = f(x)</code>.</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
+<span class="k">if</span><span class="p">(</span><span class="n">x</span> <span class="o">-</span> <span class="n">x1</span> <span class="o">&lt;</span> <span class="n">tolerance</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">f</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+<span class="p">}</span>
+<span class="k">else</span>
+<span class="p">{</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="p">(</span><span class="n">F</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">-</span> <span class="n">F</span><span class="p">(</span><span class="n">x1</span><span class="p">))</span> <span class="o">/</span> <span class="p">(</span><span class="n">x</span> <span class="o">-</span> <span class="n">x1</span><span class="p">);</span>
+<span class="p">}</span>
+
+</code></pre></div></div>
+
+<p>What is “small enough”? For <code class="language-plaintext highlighter-rouge">float</code>, that’s around 1e-7 (estimating based on <code class="language-plaintext highlighter-rouge">std::numeric_limits&lt;float&gt;::epsilon()</code>). I noticed that my implementation was using a higher tolerance: <code class="language-plaintext highlighter-rouge">1e-3</code>. This was, if I recall correctly, a value suggested by a mentor. Looking at it again, and seeing an example that used a much lower tolerance, I thought <strong>(see note below about this)</strong> “surely it should be lower—after all, we want to use the interpolated calculation as much as possible”. Lowering the tolerance, however, degraded the sound of my inverse hyperbolic sine waveshaper: small signals now had a halo of what sounded like quantization noise, and large signals had extra high end hash. Kind of the opposite of what I wanted.</p>
+
+<p>Did I get something wrong? I verified that I was correctly calculating the <a href="https://www.wolframalpha.com/input?i=asinh+antiderivative">antiderivative</a>. The only thing I could think of us how I was calculating the inverse hyperbolic sine. When I first implemented this function, I didn’t know that the C++ standard library had one of its own. So I looked up the calculation and used that:</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
+<span class="kr">inline</span> <span class="kt">float</span> <span class="n">Saturation</span><span class="o">::</span><span class="n">inverseHyperbolicSine</span> <span class="p">(</span><span class="kt">float</span> <span class="n">x</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="k">return</span> <span class="n">log</span> <span class="p">(</span><span class="n">x</span> <span class="o">+</span> <span class="n">sqrt</span> <span class="p">(</span><span class="n">x</span> <span class="o">*</span> <span class="n">x</span> <span class="o">+</span> <span class="mf">1.0</span><span class="n">f</span><span class="p">));</span>
+<span class="p">}</span>
+
+</code></pre></div></div>
+
+<p>Maybe using the STL version would work better. But how would I know? The issue was easy to hear—so I quickly put together a a Live session that would allow me to evaluate my changes.</p>
+
+<p>Generally, I found that <code class="language-plaintext highlighter-rouge">std::asinh</code> sounded better than what I had implemented. This was evident in both small and large signals. Using the STL implementation allowed me to use a slightly lower tolerance than I was using before (1e-4). Lower tolerances caused noisy output, especially noticeable for small signals.</p>
+
+<p>I also found that a smaller tolerance could be used for <code class="language-plaintext highlighter-rouge">tanh</code> without the noise I was getting for <code class="language-plaintext highlighter-rouge">asinh</code>.</p>
+
+<p><strong>A note about reasonable but wrong assumptions:</strong> I messaged Jatin Chowdhury, who I linked above, regarding my assumption that we want to use the interpolated calculation as much as possible. It turns out that my thinking was turned around. The fact that we use the conventional calculation when we would otherwise have a divide by zero doesn’t mean that we have an edge case. We can’t reason, then, that we want to use the interpolated calculation as much as possible.</p>
+
+<p>This makes sense if we consider what the difference between two sequential samples approacing 0 really means. The amount of change between samples is directly related to frequency. So, to grossly generalize, lower frequencies will trigger the conventional branch and high frequencies will trigger the interpolated branch. We’re ok with this because we’re not worried about low frequencies causing aliasing.</p>
