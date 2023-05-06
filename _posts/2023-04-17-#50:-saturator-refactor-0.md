@@ -1,3 +1,7 @@
+---
+layout: post
+---
+
 Saturation gain normalization [is a lot better now](https://github.com/tote-bag-labs/valentine/pull/50)
 
 As described in the attached issue, turning the saturation parameter up worked as intended, but also made the output quieter. This is because of the way the saturation output was being adjusted to account for input gain. This is because of the overly simplistic normalization used in saturation processing.
