@@ -10,7 +10,7 @@ You may notice that some of these posts are numbered. Those numbers correspond t
 Custom Fonts
 ============
 
-This PR landed before I started this blog, but I think it's an interesting topic. And probably the first thing I've shared that could be of direct use to you.
+[#43 - Improve custom font handling](https://github.com/tote-bag-labs/valentine/pull/43) landed before I started this blog, but I think it's an interesting topic. And probably the first thing I've shared that could be of direct use to you.
 
 With help from [baconpaul](https://github.com/baconpaul), Valentine was finally building and running in Linux. However, it failed strict pluginval validation. Juce's leak checker was asserting around leaks of `glyph` objects. My first thought was that it had something to do with the code shown below. Valentine uses a custom typeface which is created and then held as a `static` variable. `static` was used here in order to ensure that the typeface is only created once in a context where we don't have much control over when the font may be requested (or otherwise instantiated).
 
