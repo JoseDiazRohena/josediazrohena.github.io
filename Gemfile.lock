@@ -255,6 +255,7 @@ PLATFORMS
 DEPENDENCIES
   github-pages
   jekyll
+  minima
   webrick (~> 1.8)
 
 BUNDLED WITH
