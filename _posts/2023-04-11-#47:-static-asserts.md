@@ -1,3 +1,7 @@
+---
+layout: post
+---
+
 And so continues our [crusade against warnings](https://github.com/tote-bag-labs/valentine/pull/47).
 
 In this case, most of our warnings were implicit `float` to `double`

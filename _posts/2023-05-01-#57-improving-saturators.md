@@ -1,3 +1,6 @@
+---
+layout: post
+---
 
 I recently spent time fixing the gain normalization in Valentine's waveshapers. After a brief detour to a [UI topic](https://github.com/tote-bag-labs/valentine/pull/53) (more on this later), I decided to take a look at how the waveshapers use [Antiderivative Anti Aliasing](https://github.com/tote-bag-labs/valentine/pull/57). I won't go deep into the theory here, as it has been covered more comprehensively and clearly by [people smarter than me](https://jatinchowdhury18.medium.com/practical-considerations-for-antiderivative-anti-aliasing-d5847167f510). Comparing the examples linked here to what I had implemented, I noticed something odd.
 
