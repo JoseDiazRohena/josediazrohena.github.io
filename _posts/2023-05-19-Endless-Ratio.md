@@ -157,4 +157,4 @@ the parameter. It looks better too.
 </p>
 
 
-Here's the [pr](https://github.com/tote-bag-labs/valentine/pull/58/commits).
+Here's the [pr](https://github.com/tote-bag-labs/valentine/pull/58).
