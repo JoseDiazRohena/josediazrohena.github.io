@@ -79,6 +79,7 @@ corresponding arrays holding the Knee and Threshold values.
 ratioIndex = static_cast<size_t> (newValue);
 ffCompressor->setRatio (ratioValues[ratioIndex]);
 ffCompressor->setKnee (kneeValues[ratioIndex]);
+ffCompressor->setThreshold (thresholdValues[ratioIndex]);
 
 ```
 
@@ -90,8 +91,8 @@ plausible answers that seemed really complicated for the task.
 
 I realized I was overthinking it, especially given that I might not actually
 keep the change. Better for getting things done: let go of the existing
-Ratio/Knee/Threshold relationship and just linearly remapping the ratio value to
-the relevant range. The values weren't arbitrary: but they hadn't been chosen
+Ratio/Knee/Threshold relationship and linearly remap `Ratio` to
+the relevant range. The values weren't arbitrary, but they hadn't been chosen
 with systematic listening.
 
 | Ratio   | Knee     | Threshold        |
@@ -155,8 +156,5 @@ the parameter. It looks better too.
   <img src="/assets/images/valentine_screenshot_knob.png" alt="A screenshot of Valentine's UI. The Ratio box has been replaced with a knob" />
 </p>
 
-This important thing about this simplification is that it helped me understand
-the problem that I was solving. I realized it was not really complicated. The
-solution I went with is also a remap, just in segments.
 
 Here's the [pr](https://github.com/tote-bag-labs/valentine/pull/58/commits).
