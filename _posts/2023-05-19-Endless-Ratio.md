@@ -83,7 +83,7 @@ ffCompressor->setThreshold (thresholdValues[ratioIndex]);
 
 ```
 
-If I was to implement a continuoud Ratio control, then, I would also need to ensure that 
+If I was to implement a continuous Ratio control, then, I would need to ensure that
 the corresponding Knee and Threshold values were applied at the original Ratio settings.
 I took for granted that these values should change smoothly between the original settings.
 I spent a lot of time asking Chat GPT about different kinds of spline interpolation, getting seemingly
