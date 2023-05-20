@@ -47,7 +47,7 @@ sound from changing too much in this respect.
   <img src="/assets/images/valentine_screenshot_box.png" alt="A screenshot of Valentine's UI" />
 </p>
 
-Implementing the Ratio parameter using buttons was a definite improvement—it made the parameter more clear
+Implementing the ratio parameter using buttons was a definite improvement—it made the parameter more clear
 and allowed the user to get to any of the settings without progressing through the whole range. But
 it introduced some UI problems. I was having trouble getting the text on the ratio chooser
 but large enough to be readable while making the overall component make sense in the context
@@ -67,11 +67,11 @@ helping at least with the legibility issue. By then I had already resolved to tr
 Don't Overthink It
 ==================
 
-My first concern about implementing a continuous Ratio parameter was ensuring that doing so 
+My first concern about implementing a continuous ratio parameter was ensuring that doing so
 would not change the compressor's sound for settings that are presently available. That would
-mean making sure that the Knee and Threshold values were correctly set. Originally, this was
-done by determining which of the Ratio settings was selected, and using that to index into
-corresponding arrays holding the Knee and Threshold values.
+mean making sure that the knee and threshold values were correctly set. Originally, this was
+done by determining which of the ratio settings was selected, and using that to index into
+corresponding arrays holding the knee and threshold values.
 
 ```cpp
 // ValentineAudioProcessor::parameterChanged
@@ -83,15 +83,15 @@ ffCompressor->setThreshold (thresholdValues[ratioIndex]);
 
 ```
 
-If I was to implement a continuous Ratio control, then, I would need to ensure that
-the corresponding Knee and Threshold values were applied at the original Ratio settings.
+If I was to implement a continuous ratio control, then, I would need to ensure that
+the corresponding knee and threshold values were applied at the original ratio settings.
 I took for granted that these values should change smoothly between the original settings.
 I spent a lot of time asking Chat GPT about different kinds of spline interpolation, getting seemingly
 plausible answers that seemed really complicated for the task.
 
 I realized I was overthinking it, especially given that I might not actually
 keep the change. Better for getting things done: let go of the existing
-Ratio/Knee/Threshold relationship and linearly remap `Ratio` to
+ratio/knee/threshold relationship and linearly remap `Ratio` to
 the relevant range. The values weren't arbitrary, but they hadn't been chosen
 with systematic listening.
 
@@ -102,12 +102,12 @@ with systematic listening.
 |   1000:1   |  0.0 dB   |     -10.0 dB |
 
 
-In implementing our new Ratio parameter, I opted to expand the range all the
+In implementing our new ratio parameter, I opted to expand the range all the
 way down to `1:1`, making Valentine just a distortion. I chose starting values
-for Knee and Threshold that would result in values matching the previous settings
+for knee and threshold that would result in values matching the previous settings
 at the previous starting ratio (`4:1`) as a starting point. I made further adjustments
-to the Knee and Threshold ranges, listening for how the compression changed over
-the Ratio parameter's range. 
+to the knee and threshold ranges, listening for how the compression changed over
+the ratio parameter's range.
 
 Maybe Overthink It A Little Bit
 ===============================
@@ -122,10 +122,10 @@ I felt the change was a net benefit.
 
 I thought that there had to be a straightforward way to at least ensure
 that, for the settings that were previously available, Valentine would sound the same.
-I realized that I was already remapping the full Ratio range to the full Knee and Threshold ranges
-and could easily ensure that our Knee and Threshold were the right value at key
-Ratios by treating the distance between these points as smaller, connected ranges to remap to.
-For example, we can find the Knee for a Ratio of 4.5:1 by remapping from
+I realized that I was already remapping the full ratio range to the full knee and threshold ranges
+and could easily ensure that our knee and threshold were the right value at key
+ratios by treating the distance between these points as smaller, connected ranges to remap to.
+For example, we can find the knee for a ratio of 4.5:1 by remapping from
 `4.0` - `8.0` to `6.0` - `3.84`. I could try this with linear interpolation, upgrading to something
 more involved if necessary.
 
@@ -153,7 +153,7 @@ This resulted in a sound that I was much happier with, especially when adjusting
 the parameter. It looks better too.
 
 <p align="center">
-  <img src="/assets/images/valentine_screenshot_knob.png" alt="A screenshot of Valentine's UI. The Ratio box has been replaced with a knob" />
+  <img src="/assets/images/valentine_screenshot_knob.png" alt="A screenshot of Valentine's UI. The ratio box has been replaced with a knob" />
 </p>
 
 
