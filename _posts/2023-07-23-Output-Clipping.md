@@ -36,7 +36,7 @@ The processed buffer used a Thiran Allpass to apply a fractional delay of less t
 
 Another bit of tactics: the function I wrote to change latency compensation on demand is kind of complex. Another goal I have for Valentine is to not add more functionality without also adding tests. In this case, getting the function under test would require refactoring and dependency breaking. I decided to get the feature sooner and file an issue for the added [tech debt](https://github.com/tote-bag-labs/valentine/issues/92).
 
-Overthinking tt?
+Overthinking it?
 ===============
 
 Dependencies aside, refactoring the code to adjust latency during processing was kind of straightforward. Whenever the sample rate changes, `AudioProcessor::prepareToPlay()` is called and there we find the maximum possible processing latency. That value, rounded up, is the latency we will report to the host. It's also the amount of delay we will apply to the clean buffer.
